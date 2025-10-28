@@ -1,0 +1,199 @@
+# Maester Deployment Framework - Docker Compose
+# Author: Adrian Johnson <adrian207@gmail.com>
+# Version: 0.9.1-dev
+
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: maester-postgres
+    environment:
+      POSTGRES_DB: ${DB_NAME:-maester}
+      POSTGRES_USER: ${DB_USER:-maester}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-ChangeMe123!}
+    volumes:
+      # Windows-compatible volume syntax
+      - type: volume
+        source: postgres_data
+        target: /var/lib/postgresql/data
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-maester}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - maester-network
+    restart: unless-stopped
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: maester-redis
+    command: redis-server --requirepass ${REDIS_PASSWORD:-}
+    volumes:
+      - type: volume
+        source: redis_data
+        target: /data
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - maester-network
+    restart: unless-stopped
+
+  # Maester Test Runner
+  maester-runner:
+    build:
+      context: ./docker/maester-runner
+      dockerfile: Dockerfile
+    container_name: maester-runner
+    environment:
+      - AZURE_TENANT_ID=${AZURE_TENANT_ID}
+      - AZURE_CLIENT_ID=${AZURE_CLIENT_ID}
+      - AZURE_CLIENT_SECRET=${AZURE_CLIENT_SECRET:-}
+      - AUTH_METHOD=${AUTH_METHOD:-workload-identity}
+      - TEST_SCHEDULE=${TEST_SCHEDULE:-0 2 * * *}
+      - TEST_TAGS=${TEST_TAGS:-EIDSCA,CA,MFA}
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=${DB_NAME:-maester}
+      - DB_USER=${DB_USER:-maester}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - STORAGE_PROVIDER=${CLOUD_STORAGE_PROVIDER:-local}
+    volumes:
+      # Windows-compatible volume syntax
+      - type: volume
+        source: test_results
+        target: /app/results
+      - type: volume
+        source: test_configs
+        target: /app/config
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - maester-network
+    restart: unless-stopped
+
+  # Report Server (Web UI + API)
+  report-server:
+    build:
+      context: ./docker/report-server
+      dockerfile: Dockerfile
+    container_name: maester-report-server
+    environment:
+      - NODE_ENV=production
+      - PORT=8080
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=${DB_NAME:-maester}
+      - DB_USER=${DB_USER:-maester}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - WEB_ADMIN_USERNAME=${WEB_ADMIN_USERNAME:-admin}
+      - WEB_ADMIN_PASSWORD=${WEB_ADMIN_PASSWORD}
+    volumes:
+      - type: volume
+        source: test_results
+        target: /app/reports
+    ports:
+      - "${WEB_PORT:-8080}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - maester-network
+    restart: unless-stopped
+
+  # Notification Hub
+  notification-hub:
+    build:
+      context: ./docker/notification-hub
+      dockerfile: Dockerfile
+    container_name: maester-notification-hub
+    environment:
+      - NODE_ENV=production
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - NOTIFICATION_ENABLED=${NOTIFICATION_ENABLED:-true}
+      - NOTIFICATION_EMAIL=${NOTIFICATION_EMAIL}
+      - TEAMS_WEBHOOK_URL=${TEAMS_WEBHOOK_URL:-}
+      - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL:-}
+      - SMTP_SERVER=${SMTP_SERVER:-}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USERNAME=${SMTP_USERNAME:-}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
+      - SMTP_FROM=${SMTP_FROM:-}
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - maester-network
+    restart: unless-stopped
+
+  # Compliance Mapper
+  compliance-mapper:
+    build:
+      context: ./docker/compliance-mapper
+      dockerfile: Dockerfile
+    container_name: maester-compliance-mapper
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=${DB_NAME:-maester}
+      - DB_USER=${DB_USER:-maester}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - COMPLIANCE_FRAMEWORKS=${COMPLIANCE_FRAMEWORKS:-NIST-800-53,ISO-27001}
+    volumes:
+      - type: volume
+        source: compliance_data
+        target: /app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - maester-network
+    restart: unless-stopped
+
+# Named volumes (Windows-compatible)
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  test_results:
+    driver: local
+  test_configs:
+    driver: local
+  compliance_data:
+    driver: local
+
+# Network configuration
+networks:
+  maester-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
+
