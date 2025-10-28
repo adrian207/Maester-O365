@@ -63,20 +63,36 @@ Build the most comprehensive, secure, and user-friendly deployment framework for
 
 ### v0.9.1 (November 2025)
 
-**Status**: Planned  
-**Focus**: Bug fixes and stability improvements
+**Status**: 🟡 In Planning  
+**Focus**: Bug fixes and stability improvements  
+**Milestone**: [GitHub Milestone #1](https://github.com/adrian207/Maester-O365/milestone/1)  
+**Target Date**: November 30, 2025
 
 **Goals:**
 - 🔲 Address community feedback from v0.9.0
-- 🔲 Fix critical and high-priority bugs
+- 🔲 Fix critical and high-priority bugs (8 identified)
 - 🔲 Improve error handling and logging
 - 🔲 Enhanced deployment documentation
 - 🔲 Performance profiling and initial optimizations
+- 🔲 Increase test coverage to 80%+
+
+**Planned Issues:** 20 total
+- 3 Critical (P0)
+- 5 High Priority (P1)
+- 6 Enhancements
+- 3 Technical Debt
+- 3 Documentation
 
 **Success Metrics:**
-- < 5 critical bugs reported
+- Zero P0 bugs remaining
+- < 5 P1 bugs remaining
 - 95% test pass rate
 - Deploy time < 2 hours for all platforms
+- Test coverage > 80%
+
+**Documentation:**
+- [Release Plan](docs/releases/v0.9.1-PLAN.md)
+- [Issue List](docs/releases/v0.9.1-ISSUES.md)
 
 ### v0.9.2 (December 2025)
 
